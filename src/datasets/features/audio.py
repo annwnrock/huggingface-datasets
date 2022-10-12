@@ -93,23 +93,25 @@ class Audio:
             sf.write(buffer, value["array"], value["sampling_rate"], format="wav")
             return {"bytes": buffer.getvalue(), "path": None}
         elif value.get("path") is not None and os.path.isfile(value["path"]):
-            # we set "bytes": None to not duplicate the data if they're already available locally
-            if value["path"].endswith("pcm"):
-                # "PCM" only has raw audio bytes
-                if value.get("sampling_rate") is None:
-                    # At least, If you want to convert "PCM-byte" to "WAV-byte", you have to know sampling rate
-                    raise KeyError("To use PCM files, please specify a 'sampling_rate' in Audio object")
-                if value.get("bytes"):
-                    # If we already had PCM-byte, we don`t have to make "read file, make bytes" (just use it!)
-                    bytes_value = np.frombuffer(value["bytes"], dtype=np.int16).astype(np.float32) / 32767
-                else:
-                    bytes_value = np.memmap(value["path"], dtype="h", mode="r").astype(np.float32) / 32767
-
-                buffer = BytesIO(bytes())
-                sf.write(buffer, bytes_value, value["sampling_rate"], format="wav")
-                return {"bytes": buffer.getvalue(), "path": None}
-            else:
+            if not value["path"].endswith("pcm"):
                 return {"bytes": None, "path": value.get("path")}
+            # "PCM" only has raw audio bytes
+            if value.get("sampling_rate") is None:
+                # At least, If you want to convert "PCM-byte" to "WAV-byte", you have to know sampling rate
+                raise KeyError("To use PCM files, please specify a 'sampling_rate' in Audio object")
+            bytes_value = (
+                np.frombuffer(value["bytes"], dtype=np.int16).astype(np.float32)
+                / 32767
+                if value.get("bytes")
+                else np.memmap(value["path"], dtype="h", mode="r").astype(
+                    np.float32
+                )
+                / 32767
+            )
+
+            buffer = BytesIO(bytes())
+            sf.write(buffer, bytes_value, value["sampling_rate"], format="wav")
+            return {"bytes": buffer.getvalue(), "path": None}
         elif value.get("bytes") is not None or value.get("path") is not None:
             # store the audio bytes, and path is used to infer the audio format using the file extension
             return {"bytes": value.get("bytes"), "path": value.get("path")}
@@ -142,19 +144,20 @@ class Audio:
         if path is None and file is None:
             raise ValueError(f"An audio sample should have one of 'path' or 'bytes' but both are None in {value}.")
         elif path is not None and path.endswith("mp3"):
-            array, sampling_rate = self._decode_mp3(file if file else path)
+            array, sampling_rate = self._decode_mp3(file or path)
         elif path is not None and path.endswith("opus"):
-            if file:
-                array, sampling_rate = self._decode_non_mp3_file_like(file, "opus")
-            else:
-                array, sampling_rate = self._decode_non_mp3_path_like(
+            array, sampling_rate = (
+                self._decode_non_mp3_file_like(file, "opus")
+                if file
+                else self._decode_non_mp3_path_like(
                     path, "opus", token_per_repo_id=token_per_repo_id
                 )
+            )
+
+        elif file:
+            array, sampling_rate = self._decode_non_mp3_file_like(file)
         else:
-            if file:
-                array, sampling_rate = self._decode_non_mp3_file_like(file)
-            else:
-                array, sampling_rate = self._decode_non_mp3_path_like(path, token_per_repo_id=token_per_repo_id)
+            array, sampling_rate = self._decode_non_mp3_path_like(path, token_per_repo_id=token_per_repo_id)
         return {"path": path, "array": array, "sampling_rate": sampling_rate}
 
     def flatten(self) -> Union["FeatureType", Dict[str, "FeatureType"]]:
@@ -265,12 +268,13 @@ class Audio:
         except ImportError as err:
             raise ImportError("To support decoding audio files, please install 'librosa' and 'soundfile'.") from err
 
-        if format == "opus":
-            if version.parse(sf.__libsndfile_version__) < version.parse("1.0.30"):
-                raise RuntimeError(
-                    "Decoding .opus files requires 'libsndfile'>=1.0.30, "
-                    + 'it can be installed via conda: `conda install -c conda-forge "libsndfile>=1.0.30"`'
-                )
+        if format == "opus" and version.parse(
+            sf.__libsndfile_version__
+        ) < version.parse("1.0.30"):
+            raise RuntimeError(
+                "Decoding .opus files requires 'libsndfile'>=1.0.30, "
+                + 'it can be installed via conda: `conda install -c conda-forge "libsndfile>=1.0.30"`'
+            )
         array, sampling_rate = sf.read(file)
         array = array.T
         if self.mono:

@@ -25,9 +25,7 @@ else:
     def pa_table_from_pylist(mapping):
         # Copied from: https://github.com/apache/arrow/blob/master/python/pyarrow/table.pxi#L5193
         arrays = []
-        names = []
-        if mapping:
-            names = list(mapping[0].keys())
+        names = list(mapping[0].keys()) if mapping else []
         for n in names:
             v = [row[n] if n in row else None for row in mapping]
             arrays.append(v)
@@ -106,7 +104,6 @@ class Json(datasets.ArrowBasedBuilder):
                 pa_table = pa.Table.from_pydict(mapping=mapping)
                 yield file_idx, self._cast_table(pa_table)
 
-            # If the file has one json object per line
             else:
                 with open(file, "rb") as f:
                     batch_idx = 0
@@ -136,13 +133,12 @@ class Json(datasets.ArrowBasedBuilder):
                                         or block_size > len(batch)
                                     ):
                                         raise
-                                    else:
-                                        # Increase the block size in case it was too small.
-                                        # The block size will be reset for the next file.
-                                        logger.debug(
-                                            f"Batch of {len(batch)} bytes couldn't be parsed with block_size={block_size}. Retrying with block_size={block_size * 2}."
-                                        )
-                                        block_size *= 2
+                                    # Increase the block size in case it was too small.
+                                    # The block size will be reset for the next file.
+                                    logger.debug(
+                                        f"Batch of {len(batch)} bytes couldn't be parsed with block_size={block_size}. Retrying with block_size={block_size * 2}."
+                                    )
+                                    block_size *= 2
                         except pa.ArrowInvalid as e:
                             try:
                                 with open(file, encoding="utf-8") as f:
@@ -162,11 +158,9 @@ class Json(datasets.ArrowBasedBuilder):
                             else:
                                 logger.error(f"Failed to read file '{file}' with error {type(e)}: {e}")
                                 raise ValueError(
-                                    f"Not able to read records in the JSON file at {file}. "
-                                    f"You should probably indicate the field of the JSON file containing your records. "
-                                    f"This JSON file contain the following fields: {str(list(dataset.keys()))}. "
-                                    f"Select the correct one and provide it as `field='XXX'` to the dataset loading method. "
+                                    f"Not able to read records in the JSON file at {file}. You should probably indicate the field of the JSON file containing your records. This JSON file contain the following fields: {list(dataset.keys())}. Select the correct one and provide it as `field='XXX'` to the dataset loading method. "
                                 ) from None
+
                         # Uncomment for debugging (will print the Arrow table size and elements)
                         # logger.warning(f"pa_table: {pa_table} num rows: {pa_table.num_rows}")
                         # logger.warning('\n'.join(str(pa_table.slice(i, 1).to_pydict()) for i in range(pa_table.num_rows)))

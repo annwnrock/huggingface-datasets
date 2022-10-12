@@ -37,12 +37,17 @@ class JaxFormatter(Formatter[dict, "jnp.ndarray", dict]):
     def _consolidate(self, column):
         import jax.numpy as jnp
 
-        if isinstance(column, list) and column:
-            if all(
-                isinstance(x, jnp.ndarray) and x.shape == column[0].shape and x.dtype == column[0].dtype
+        if (
+            isinstance(column, list)
+            and column
+            and all(
+                isinstance(x, jnp.ndarray)
+                and x.shape == column[0].shape
+                and x.dtype == column[0].dtype
                 for x in column
-            ):
-                return jnp.stack(column)
+            )
+        ):
+            return jnp.stack(column)
         return column
 
     def _tensorize(self, value):
@@ -77,9 +82,8 @@ class JaxFormatter(Formatter[dict, "jnp.ndarray", dict]):
 
     def _recursive_tensorize(self, data_struct: dict):
         # support for nested types like struct of list of struct
-        if isinstance(data_struct, np.ndarray):
-            if data_struct.dtype == object:  # jax arrays cannot be instantied from an array of objects
-                return self._consolidate([self.recursive_tensorize(substruct) for substruct in data_struct])
+        if isinstance(data_struct, np.ndarray) and data_struct.dtype == object:
+            return self._consolidate([self.recursive_tensorize(substruct) for substruct in data_struct])
         return self._tensorize(data_struct)
 
     def recursive_tensorize(self, data_struct: dict):

@@ -55,10 +55,7 @@ class HasNextIterator(Iterator):
         return self
 
     def __next__(self):
-        if self._hasnext:
-            result = self._thenext
-        else:
-            result = next(self.it)
+        result = self._thenext if self._hasnext else next(self.it)
         self._hasnext = None
         return result
 
@@ -102,7 +99,10 @@ def _shuffle_kwargs(rng: np.random.Generator, kwargs: dict) -> dict:
     # This way entangled lists of (shard, shard_metadata) are still in the right order.
 
     # First, let's generate the shuffled indices per list size
-    list_sizes = set(len(value) for value in kwargs.values() if isinstance(value, list))
+    list_sizes = {
+        len(value) for value in kwargs.values() if isinstance(value, list)
+    }
+
     indices_per_size = {}
     for size in list_sizes:
         indices_per_size[size] = list(range(size))
@@ -274,7 +274,7 @@ class VerticallyConcatenatedMultiSourcesExamplesIterable(_BaseExamplesIterable):
 def _check_column_names(column_names: List[str]):
     """Check the column names to make sure they don't contain duplicates."""
     counter = Counter(column_names)
-    if not all(count == 1 for count in counter.values()):
+    if any(count != 1 for count in counter.values()):
         duplicated_columns = [col for col in counter if counter[col] > 1]
         raise ValueError(
             f"The examples iterables can't have duplicated columns but columns {duplicated_columns} are duplicated."
@@ -312,16 +312,14 @@ class HorizontallyConcatenatedMultiSourcesExamplesIterable(_BaseExamplesIterable
                     examples.append(example)
                 except StopIteration:
                     ex_iterators.remove(ex_iterator)
-            if ex_iterators:
-                if i == 0:
-                    _check_column_names([column_name for example in examples for column_name in example])
-                new_example = {}
-                for example in examples:
-                    new_example.update(example)
-                new_key = "_".join(str(key) for key in keys)
-                yield new_key, new_example
-            else:
+            if not ex_iterators:
                 break
+            if i == 0:
+                _check_column_names([column_name for example in examples for column_name in example])
+            new_example = {}
+            for example in examples:
+                new_example |= example
+            yield ("_".join(str(key) for key in keys), new_example)
 
     def shuffle_data_sources(
         self, generator: np.random.Generator
@@ -411,9 +409,10 @@ class MappedExamplesIterable(_BaseExamplesIterable):
         if self.batched:
             for key, example in iterator:
                 # If batched, first build the batch
-                key_examples_list = [(key, example)] + [
-                    (key, example) for key, example in islice(iterator, self.batch_size - 1)
-                ]
+                key_examples_list = [(key, example)] + list(
+                    islice(iterator, self.batch_size - 1)
+                )
+
                 keys, examples = zip(*key_examples_list)
                 if self.drop_last_batch and len(examples) < self.batch_size:  # ignore last batch
                     return
@@ -424,19 +423,19 @@ class MappedExamplesIterable(_BaseExamplesIterable):
                 if self.with_indices:
                     function_args.append([current_idx + i for i in range(len(key_examples_list))])
                 transformed_batch = dict(batch)  # this will be updated with the function output
-                transformed_batch.update(self.function(*function_args, **self.fn_kwargs))
+                transformed_batch |= self.function(*function_args, **self.fn_kwargs)
                 # then remove the unwanted columns
                 if self.remove_columns:
                     for c in self.remove_columns:
                         del transformed_batch[c]
                 if transformed_batch:
                     first_col = next(iter(transformed_batch))
-                    bad_cols = [
+                    if bad_cols := [
                         col
                         for col in transformed_batch
-                        if len(transformed_batch[col]) != len(transformed_batch[first_col])
-                    ]
-                    if bad_cols:
+                        if len(transformed_batch[col])
+                        != len(transformed_batch[first_col])
+                    ]:
                         raise ValueError(
                             f"Column lengths mismatch: columns {bad_cols} have length {[len(transformed_batch[col]) for col in bad_cols]} while {first_col} has length {len(transformed_batch[first_col])}."
                         )
@@ -457,7 +456,7 @@ class MappedExamplesIterable(_BaseExamplesIterable):
                 if self.with_indices:
                     function_args.append(current_idx)
                 transformed_example = dict(example)  # this will be updated with the function output
-                transformed_example.update(self.function(*function_args, **self.fn_kwargs))
+                transformed_example |= self.function(*function_args, **self.fn_kwargs)
                 # then we remove the unwanted columns
                 if self.remove_columns:
                     for c in self.remove_columns:
@@ -519,9 +518,10 @@ class FilteredExamplesIterable(_BaseExamplesIterable):
         if self.batched:
             for key, example in iterator:
                 # If batched, first build the batch
-                key_examples_list = [(key, example)] + [
-                    (key, example) for key, example in islice(iterator, self.batch_size - 1)
-                ]
+                key_examples_list = [(key, example)] + list(
+                    islice(iterator, self.batch_size - 1)
+                )
+
                 keys, examples = zip(*key_examples_list)
                 batch = _examples_to_batch(examples)
                 # then compute the mask for the batch
@@ -542,8 +542,7 @@ class FilteredExamplesIterable(_BaseExamplesIterable):
                 function_args = [inputs] if self.input_columns is None else [inputs[col] for col in self.input_columns]
                 if self.with_indices:
                     function_args.append(current_idx)
-                to_keep = self.function(*function_args)
-                if to_keep:
+                if to_keep := self.function(*function_args):
                     yield key, example
                 current_idx += 1
 
@@ -666,9 +665,9 @@ def _apply_feature_types(
             example[column_name] = None
     # we encode the example for ClassLabel feature types for example
     encoded_example = features.encode_example(example)
-    # Decode example for Audio feature, e.g.
-    decoded_example = features.decode_example(encoded_example, token_per_repo_id=token_per_repo_id)
-    return decoded_example
+    return features.decode_example(
+        encoded_example, token_per_repo_id=token_per_repo_id
+    )
 
 
 class TypedExamplesIterable(_BaseExamplesIterable):
@@ -765,11 +764,9 @@ class IterableDataset(DatasetInfoMixin):
         return self._ex_iterable.n_shards
 
     def _iter(self):
-        if self._shuffling:
-            ex_iterable = self._ex_iterable.shuffle_data_sources(self._effective_generator())
-        else:
-            ex_iterable = self._ex_iterable
-        yield from ex_iterable
+        yield from self._ex_iterable.shuffle_data_sources(
+            self._effective_generator()
+        ) if self._shuffling else self._ex_iterable
 
     def _iter_shard(self, shard_idx: int):
         if self._shuffling:

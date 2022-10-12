@@ -123,7 +123,7 @@ def test_csv_datasetdict_reader_split(split, csv_path, tmp_path):
     expected_features = {"col_1": "int64", "col_2": "int64", "col_3": "float64"}
     dataset = CsvDatasetReader(path, cache_dir=cache_dir).read()
     _check_csv_datasetdict(dataset, expected_features, splits=list(path.keys()))
-    assert all(dataset[split].split == split for split in path.keys())
+    assert all(dataset[split].split == split for split in path)
 
 
 def iter_csv_file(csv_path):

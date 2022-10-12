@@ -34,11 +34,9 @@ def data_files_with_labels_no_metadata(tmp_path, audio_file):
     audio_filename2 = subdir_class_1 / "audio_uk.wav"
     shutil.copyfile(audio_file, audio_filename2)
 
-    data_files_with_labels_no_metadata = DataFilesDict.from_local_or_remote(
+    return DataFilesDict.from_local_or_remote(
         get_data_patterns_locally(str(data_dir)), str(data_dir)
     )
-
-    return data_files_with_labels_no_metadata
 
 
 @pytest.fixture
@@ -353,10 +351,12 @@ def test_generate_examples_with_metadata_that_misses_one_audio(
     audio_files_with_metadata_that_misses_one_audio, drop_metadata
 ):
     audio_file, audio_file2, audio_metadata_file = audio_files_with_metadata_that_misses_one_audio
-    if not drop_metadata:
-        features = Features({"audio": Audio(), "text": Value("string")})
-    else:
-        features = Features({"audio": Audio()})
+    features = (
+        Features({"audio": Audio()})
+        if drop_metadata
+        else Features({"audio": Audio(), "text": Value("string")})
+    )
+
     audiofolder = AudioFolder(
         drop_metadata=drop_metadata,
         features=features,
@@ -387,8 +387,12 @@ def test_data_files_with_metadata_and_single_split(streaming, cache_dir, data_fi
         dataset = list(datasets[split])
         assert len(dataset) == expected_num_of_audios
         # make sure each sample has its own audio and metadata
-        assert len(set(example["audio"]["path"] for example in dataset)) == expected_num_of_audios
-        assert len(set(example["text"] for example in dataset)) == expected_num_of_audios
+        assert (
+            len({example["audio"]["path"] for example in dataset})
+            == expected_num_of_audios
+        )
+
+        assert len({example["text"] for example in dataset}) == expected_num_of_audios
         assert all(example["text"] is not None for example in dataset)
 
 
@@ -405,8 +409,12 @@ def test_data_files_with_metadata_and_multiple_splits(streaming, cache_dir, data
         dataset = list(datasets[split])
         assert len(dataset) == expected_num_of_audios
         # make sure each sample has its own audio and metadata
-        assert len(set(example["audio"]["path"] for example in dataset)) == expected_num_of_audios
-        assert len(set(example["text"] for example in dataset)) == expected_num_of_audios
+        assert (
+            len({example["audio"]["path"] for example in dataset})
+            == expected_num_of_audios
+        )
+
+        assert len({example["text"] for example in dataset}) == expected_num_of_audios
         assert all(example["text"] is not None for example in dataset)
 
 
@@ -427,7 +435,7 @@ def test_data_files_with_metadata_and_archives(streaming, cache_dir, data_files_
             sum(np.array_equal(dataset[0]["audio"]["array"], example["audio"]["array"]) for example in dataset[1:])
             == 0
         )
-        assert len(set(example["text"] for example in dataset)) == expected_num_of_audios
+        assert len({example["text"] for example in dataset}) == expected_num_of_audios
         assert all(example["text"] is not None for example in dataset)
 
 

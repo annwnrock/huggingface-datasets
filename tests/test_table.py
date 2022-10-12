@@ -36,11 +36,15 @@ def in_memory_pa_table(arrow_file) -> pa.Table:
 
 def _to_testing_blocks(table: TableBlock) -> List[List[TableBlock]]:
     assert len(table) > 2
-    blocks = [
+    return [
         [table.slice(0, 2)],
-        [table.slice(2).drop([c for c in table.column_names if c != "tokens"]), table.slice(2).drop(["tokens"])],
+        [
+            table.slice(2).drop(
+                [c for c in table.column_names if c != "tokens"]
+            ),
+            table.slice(2).drop(["tokens"]),
+        ],
     ]
-    return blocks
 
 
 @pytest.fixture(scope="session")
@@ -369,7 +373,7 @@ def test_in_memory_table_replace_schema_metadata(in_memory_pa_table):
 def test_in_memory_table_add_column(in_memory_pa_table):
     i = len(in_memory_pa_table.column_names)
     field_ = "new_field"
-    column = pa.array([i for i in range(len(in_memory_pa_table))])
+    column = pa.array(list(range(len(in_memory_pa_table))))
     table = InMemoryTable(in_memory_pa_table).add_column(i, field_, column)
     assert table.table == in_memory_pa_table.add_column(i, field_, column)
     assert isinstance(table, InMemoryTable)
@@ -377,7 +381,7 @@ def test_in_memory_table_add_column(in_memory_pa_table):
 
 def test_in_memory_table_append_column(in_memory_pa_table):
     field_ = "new_field"
-    column = pa.array([i for i in range(len(in_memory_pa_table))])
+    column = pa.array(list(range(len(in_memory_pa_table))))
     table = InMemoryTable(in_memory_pa_table).append_column(field_, column)
     assert table.table == in_memory_pa_table.append_column(field_, column)
     assert isinstance(table, InMemoryTable)
@@ -392,7 +396,7 @@ def test_in_memory_table_remove_column(in_memory_pa_table):
 def test_in_memory_table_set_column(in_memory_pa_table):
     i = len(in_memory_pa_table.column_names)
     field_ = "new_field"
-    column = pa.array([i for i in range(len(in_memory_pa_table))])
+    column = pa.array(list(range(len(in_memory_pa_table))))
     table = InMemoryTable(in_memory_pa_table).set_column(i, field_, column)
     assert table.table == in_memory_pa_table.set_column(i, field_, column)
     assert isinstance(table, InMemoryTable)
@@ -549,7 +553,7 @@ def test_memory_mapped_table_replace_schema_metadata(arrow_file, in_memory_pa_ta
 def test_memory_mapped_table_add_column(arrow_file, in_memory_pa_table):
     i = len(in_memory_pa_table.column_names)
     field_ = "new_field"
-    column = pa.array([i for i in range(len(in_memory_pa_table))])
+    column = pa.array(list(range(len(in_memory_pa_table))))
     table = MemoryMappedTable.from_file(arrow_file).add_column(i, field_, column)
     assert table.table == in_memory_pa_table.add_column(i, field_, column)
     assert isinstance(table, MemoryMappedTable)
@@ -560,7 +564,7 @@ def test_memory_mapped_table_add_column(arrow_file, in_memory_pa_table):
 
 def test_memory_mapped_table_append_column(arrow_file, in_memory_pa_table):
     field_ = "new_field"
-    column = pa.array([i for i in range(len(in_memory_pa_table))])
+    column = pa.array(list(range(len(in_memory_pa_table))))
     table = MemoryMappedTable.from_file(arrow_file).append_column(field_, column)
     assert table.table == in_memory_pa_table.append_column(field_, column)
     assert isinstance(table, MemoryMappedTable)
@@ -581,7 +585,7 @@ def test_memory_mapped_table_remove_column(arrow_file, in_memory_pa_table):
 def test_memory_mapped_table_set_column(arrow_file, in_memory_pa_table):
     i = len(in_memory_pa_table.column_names)
     field_ = "new_field"
-    column = pa.array([i for i in range(len(in_memory_pa_table))])
+    column = pa.array(list(range(len(in_memory_pa_table))))
     table = MemoryMappedTable.from_file(arrow_file).set_column(i, field_, column)
     assert table.table == in_memory_pa_table.set_column(i, field_, column)
     assert isinstance(table, MemoryMappedTable)
@@ -883,7 +887,7 @@ def test_concatenation_table_add_column(
     }[blocks_type]
     i = len(in_memory_pa_table.column_names)
     field_ = "new_field"
-    column = pa.array([i for i in range(len(in_memory_pa_table))])
+    column = pa.array(list(range(len(in_memory_pa_table))))
     with pytest.raises(NotImplementedError):
         ConcatenationTable.from_blocks(blocks).add_column(i, field_, column)
         # assert table.table == in_memory_pa_table.add_column(i, field_, column)
@@ -901,7 +905,7 @@ def test_concatenation_table_append_column(
         "mixed": mixed_in_memory_and_memory_mapped_blocks,
     }[blocks_type]
     field_ = "new_field"
-    column = pa.array([i for i in range(len(in_memory_pa_table))])
+    column = pa.array(list(range(len(in_memory_pa_table))))
     with pytest.raises(NotImplementedError):
         ConcatenationTable.from_blocks(blocks).append_column(field_, column)
         # assert table.table == in_memory_pa_table.append_column(field_, column)
@@ -934,7 +938,7 @@ def test_concatenation_table_set_column(
     }[blocks_type]
     i = len(in_memory_pa_table.column_names)
     field_ = "new_field"
-    column = pa.array([i for i in range(len(in_memory_pa_table))])
+    column = pa.array(list(range(len(in_memory_pa_table))))
     with pytest.raises(NotImplementedError):
         ConcatenationTable.from_blocks(blocks).set_column(i, field_, column)
         # assert table.table == in_memory_pa_table.set_column(i, field_, column)
@@ -999,10 +1003,10 @@ def test_concat_tables(arrow_file, in_memory_pa_table):
 
 
 def _interpolation_search_ground_truth(arr: List[int], x: int) -> Union[int, IndexError]:
-    for i in range(len(arr) - 1):
-        if arr[i] <= x < arr[i + 1]:
-            return i
-    return IndexError
+    return next(
+        (i for i in range(len(arr) - 1) if arr[i] <= x < arr[i + 1]),
+        IndexError,
+    )
 
 
 class _ListWithGetitemCounter(list):

@@ -30,10 +30,8 @@ def test_cached_path_extract(compression_format, gz_file, xz_file, zstd_path, tm
     cache_dir = tmp_path / "cache"
     download_config = DownloadConfig(cache_dir=cache_dir, extract_compressed_file=True)
     extracted_path = cached_path(input_path, download_config=download_config)
-    with open(extracted_path) as f:
-        extracted_file_content = f.read()
-    with open(text_file) as f:
-        expected_file_content = f.read()
+    extracted_file_content = Path(extracted_path).read_text()
+    expected_file_content = Path(text_file).read_text()
     assert extracted_file_content == expected_file_content
 
 
@@ -41,11 +39,11 @@ def test_cached_path_extract(compression_format, gz_file, xz_file, zstd_path, tm
 @pytest.mark.parametrize("default_cache_dir", [True, False])
 def test_extracted_datasets_path(default_extracted, default_cache_dir, xz_file, tmp_path, monkeypatch):
     custom_cache_dir = "custom_cache"
-    custom_extracted_dir = "custom_extracted_dir"
     custom_extracted_path = tmp_path / "custom_extracted_path"
     if default_extracted:
         expected = ("downloads" if default_cache_dir else custom_cache_dir, "extracted")
     else:
+        custom_extracted_dir = "custom_extracted_dir"
         monkeypatch.setattr("datasets.config.EXTRACTED_DATASETS_DIR", custom_extracted_dir)
         monkeypatch.setattr("datasets.config.EXTRACTED_DATASETS_PATH", str(custom_extracted_path))
         expected = custom_extracted_path.parts[-2:] if default_cache_dir else (custom_cache_dir, custom_extracted_dir)

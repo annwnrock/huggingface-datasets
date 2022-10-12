@@ -728,19 +728,26 @@ class BaseDatasetTest(TestCase):
                 dset1.select(
                     [2, 1, 0],
                     keep_in_memory=in_memory,
-                    indices_cache_file_name=os.path.join(tmp_dir, "i1.arrow") if not in_memory else None,
+                    indices_cache_file_name=None
+                    if in_memory
+                    else os.path.join(tmp_dir, "i1.arrow"),
                 ),
                 dset2.select(
                     [2, 1, 0],
                     keep_in_memory=in_memory,
-                    indices_cache_file_name=os.path.join(tmp_dir, "i2.arrow") if not in_memory else None,
+                    indices_cache_file_name=None
+                    if in_memory
+                    else os.path.join(tmp_dir, "i2.arrow"),
                 ),
                 dset3.select(
                     [1, 0],
                     keep_in_memory=in_memory,
-                    indices_cache_file_name=os.path.join(tmp_dir, "i3.arrow") if not in_memory else None,
+                    indices_cache_file_name=None
+                    if in_memory
+                    else os.path.join(tmp_dir, "i3.arrow"),
                 ),
             )
+
 
             dset3 = dset3.rename_column("foo", "new_foo")
             dset3 = dset3.remove_columns("new_foo")
@@ -1084,7 +1091,7 @@ class BaseDatasetTest(TestCase):
                     assert_arrow_metadata_are_synced_with_dataset_features(dset_test)
                     file_names = sorted(Path(cache_file["filename"]).name for cache_file in dset_test.cache_files)
                     for i, file_name in enumerate(file_names):
-                        self.assertIn(new_fingerprint + f"_{i:05d}", file_name)
+                        self.assertIn(f"{new_fingerprint}_{i:05d}", file_name)
 
         with tempfile.TemporaryDirectory() as tmp_dir:  # lambda (requires multiprocess from pathos)
             with self._create_dummy_dataset(in_memory, tmp_dir) as dset:
@@ -1432,6 +1439,9 @@ class BaseDatasetTest(TestCase):
         # be sure that the state of the map callable is unaffected
         # before processing the dataset examples
 
+
+
+
         class ExampleCounter:
             def __init__(self, batched=False):
                 self.batched = batched
@@ -1439,10 +1449,8 @@ class BaseDatasetTest(TestCase):
                 self.cnt = 0
 
             def __call__(self, example):
-                if self.batched:
-                    self.cnt += len(example)
-                else:
-                    self.cnt += 1
+                self.cnt += len(example) if self.batched else 1
+
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             with self._create_dummy_dataset(in_memory, tmp_dir) as dset:
@@ -1705,7 +1713,7 @@ class BaseDatasetTest(TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             with self._create_dummy_dataset(in_memory, tmp_dir) as dset:
-                indices = list(range(0, len(dset)))
+                indices = list(range(len(dset)))
                 with dset.select(indices) as dset_select_all:
                     # no indices mapping, since the indices are contiguous
                     # (in this case the arrow table is simply sliced, which is more efficient)
@@ -1715,7 +1723,7 @@ class BaseDatasetTest(TestCase):
                     self.assertDictEqual(dset.features, Features({"filename": Value("string")}))
                     self.assertDictEqual(dset_select_all.features, Features({"filename": Value("string")}))
                     self.assertNotEqual(dset_select_all._fingerprint, fingerprint)
-                indices = range(0, len(dset))
+                indices = range(len(dset))
                 with dset.select(indices) as dset_select_all:
                     # same but with range
                     self.assertIsNone(dset_select_all._indices)
@@ -3088,7 +3096,9 @@ def test_dataset_from_file(in_memory, dataset, arrow_file):
         dataset_from_file = Dataset.from_file(filename, in_memory=in_memory)
     assert dataset_from_file.features.type == dataset.features.type
     assert dataset_from_file.features == dataset.features
-    assert dataset_from_file.cache_files == ([{"filename": filename}] if not in_memory else [])
+    assert dataset_from_file.cache_files == (
+        [] if in_memory else [{"filename": filename}]
+    )
 
 
 def _check_csv_dataset(dataset, expected_features):
@@ -3349,8 +3359,7 @@ def data_generator():
             {"col_1": "2", "col_2": 2, "col_3": 2.0},
             {"col_1": "3", "col_2": 3, "col_3": 3.0},
         ]
-        for item in data:
-            yield item
+        yield from data
 
     return _gen
 

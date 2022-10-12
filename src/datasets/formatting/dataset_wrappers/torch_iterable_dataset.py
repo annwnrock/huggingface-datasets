@@ -38,9 +38,9 @@ class TorchIterableDataset(IterableDataset, torch.utils.data.IterableDataset):
                     f"Therefore it's unnecessary to have a number of workers greater than dataset.n_shards={self.n_shards}."
                     f"To enable more parallelism, please split the dataset in more files than {self.n_shards}."
                 )
-            # split workload
-            shards_indices = list(range(worker_info.id, self.n_shards, worker_info.num_workers))
-            if shards_indices:
+            if shards_indices := list(
+                range(worker_info.id, self.n_shards, worker_info.num_workers)
+            ):
                 logger.debug(
                     f"dataloader worker#{worker_info.id}, ': Starting to iterate over {len(shards_indices)}/{self.n_shards} shards."
                 )

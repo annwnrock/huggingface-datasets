@@ -27,20 +27,17 @@ else:
     def pa_table_to_pylist(table):
         keys = table.column_names
         values = table.to_pydict().values()
-        return [{k: v for k, v in zip(keys, row_values)} for row_values in zip(*values)]
+        return [dict(zip(keys, row_values)) for row_values in zip(*values)]
 
 
 def count_path_segments(path):
     cnt = 0
     while True:
         parts = os.path.split(path)
-        if parts[0] == path:
+        if parts[0] == path or parts[1] == path:
             break
-        elif parts[1] == path:
-            break
-        else:
-            path = parts[0]
-            cnt += 1
+        path = parts[0]
+        cnt += 1
     return cnt
 
 
@@ -143,7 +140,7 @@ class FolderBasedBuilder(datasets.GeneratorBasedBuilder):
 
                 if metadata_files:
                     # add metadata if `metadata_files` are found and `drop_metadata` is None (default) or False
-                    add_metadata = not (self.config.drop_metadata is True)
+                    add_metadata = self.config.drop_metadata is not True
                     # if `metadata_files` are found, add labels only if
                     # `drop_labels` is set up to False explicitly (not-default behavior)
                     add_labels = self.config.drop_labels is False
@@ -151,7 +148,7 @@ class FolderBasedBuilder(datasets.GeneratorBasedBuilder):
                     # if `metadata_files` are not found, don't add metadata
                     add_metadata = False
                     # if `metadata_files` are not found but `drop_labels` is None (default) or False, add them
-                    add_labels = not (self.config.drop_labels is True)
+                    add_labels = self.config.drop_labels is not True
 
                 if add_labels:
                     logger.info("Adding the labels inferred from data directories to the dataset's features...")
@@ -164,8 +161,13 @@ class FolderBasedBuilder(datasets.GeneratorBasedBuilder):
                 datasets.SplitGenerator(
                     name=split_name,
                     gen_kwargs={
-                        "files": [(file, downloaded_file) for file, downloaded_file in zip(files, downloaded_files)]
-                        + [(None, dl_manager.iter_files(downloaded_dir)) for downloaded_dir in downloaded_dirs],
+                        "files": (
+                            list(zip(files, downloaded_files))
+                            + [
+                                (None, dl_manager.iter_files(downloaded_dir))
+                                for downloaded_dir in downloaded_dirs
+                            ]
+                        ),
                         "metadata_files": metadata_files,
                         "split_name": split_name,
                         "add_labels": add_labels,
@@ -174,6 +176,7 @@ class FolderBasedBuilder(datasets.GeneratorBasedBuilder):
                 )
             )
 
+
         if add_metadata:
             # Verify that:
             # * all metadata files have the same set of features
@@ -181,10 +184,13 @@ class FolderBasedBuilder(datasets.GeneratorBasedBuilder):
             features_per_metadata_file: List[Tuple[str, datasets.Features]] = []
 
             # Check that all metadata files share the same format
-            metadata_ext = set(
+            metadata_ext = {
                 os.path.splitext(downloaded_metadata_file)[1][1:]
-                for _, downloaded_metadata_file in itertools.chain.from_iterable(metadata_files.values())
-            )
+                for _, downloaded_metadata_file in itertools.chain.from_iterable(
+                    metadata_files.values()
+                )
+            }
+
             if len(metadata_ext) > 1:
                 raise ValueError(f"Found metadata files with different extensions: {list(metadata_ext)}")
             metadata_ext = metadata_ext.pop()
@@ -259,9 +265,8 @@ class FolderBasedBuilder(datasets.GeneratorBasedBuilder):
         if metadata_file_ext == "csv":
             # Use `pd.read_csv` (although slower) instead of `pyarrow.csv.read_csv` for reading CSV files for consistency with the CSV packaged module
             return pa.Table.from_pandas(pd.read_csv(metadata_file))
-        else:
-            with open(metadata_file, "rb") as f:
-                return paj.read_json(f)
+        with open(metadata_file, "rb") as f:
+            return paj.read_json(f)
 
     def _generate_examples(self, files, metadata_files, split_name, add_metadata, add_labels):
         split_metadata_files = metadata_files.get(split_name, [])
@@ -274,10 +279,11 @@ class FolderBasedBuilder(datasets.GeneratorBasedBuilder):
         downloaded_metadata_file = None
 
         if split_metadata_files:
-            metadata_ext = set(
+            metadata_ext = {
                 os.path.splitext(downloaded_metadata_file)[1][1:]
                 for _, downloaded_metadata_file in split_metadata_files
-            )
+            }
+
             metadata_ext = metadata_ext.pop()
 
         file_idx = 0
@@ -291,52 +297,61 @@ class FolderBasedBuilder(datasets.GeneratorBasedBuilder):
                         current_dir = os.path.dirname(original_file)
                         if last_checked_dir is None or last_checked_dir != current_dir:
                             last_checked_dir = current_dir
-                            metadata_file_candidates = [
-                                (
-                                    os.path.relpath(original_file, os.path.dirname(metadata_file_candidate)),
-                                    metadata_file_candidate,
-                                    downloaded_metadata_file,
-                                )
-                                for metadata_file_candidate, downloaded_metadata_file in split_metadata_files
-                                if metadata_file_candidate
-                                is not None  # ignore metadata_files that are inside archives
-                                and not os.path.relpath(
-                                    original_file, os.path.dirname(metadata_file_candidate)
-                                ).startswith("..")
-                            ]
-                            if metadata_file_candidates:
-                                _, metadata_file, downloaded_metadata_file = min(
-                                    metadata_file_candidates, key=lambda x: count_path_segments(x[0])
-                                )
-                                pa_metadata_table = self._read_metadata(downloaded_metadata_file)
-                                pa_file_name_array = pa_metadata_table["file_name"]
-                                pa_file_name_array = pc.replace_substring(
-                                    pa_file_name_array, pattern="\\", replacement="/"
-                                )
-                                pa_metadata_table = pa_metadata_table.drop(["file_name"])
-                                metadata_dir = os.path.dirname(metadata_file)
-                                metadata_dict = {
-                                    file_name: sample_metadata
-                                    for file_name, sample_metadata in zip(
-                                        pa_file_name_array.to_pylist(), pa_table_to_pylist(pa_metadata_table)
+                            if not (
+                                metadata_file_candidates := [
+                                    (
+                                        os.path.relpath(
+                                            original_file,
+                                            os.path.dirname(
+                                                metadata_file_candidate
+                                            ),
+                                        ),
+                                        metadata_file_candidate,
+                                        downloaded_metadata_file,
                                     )
-                                }
-                            else:
+                                    for metadata_file_candidate, downloaded_metadata_file in split_metadata_files
+                                    if metadata_file_candidate
+                                    is not None  # ignore metadata_files that are inside archives
+                                    and not os.path.relpath(
+                                        original_file,
+                                        os.path.dirname(metadata_file_candidate),
+                                    ).startswith("..")
+                                ]
+                            ):
                                 raise ValueError(
                                     f"One or several metadata.{metadata_ext} were found, but not in the same directory or in a parent directory of {downloaded_file_or_dir}."
                                 )
-                        if metadata_dir is not None and downloaded_metadata_file is not None:
-                            file_relpath = os.path.relpath(original_file, metadata_dir)
-                            file_relpath = file_relpath.replace("\\", "/")
-                            if file_relpath not in metadata_dict:
-                                raise ValueError(
-                                    f"{self.BASE_COLUMN_NAME} at {file_relpath} doesn't have metadata in {downloaded_metadata_file}."
+                            _, metadata_file, downloaded_metadata_file = min(
+                                metadata_file_candidates, key=lambda x: count_path_segments(x[0])
+                            )
+                            pa_metadata_table = self._read_metadata(downloaded_metadata_file)
+                            pa_file_name_array = pa_metadata_table["file_name"]
+                            pa_file_name_array = pc.replace_substring(
+                                pa_file_name_array, pattern="\\", replacement="/"
+                            )
+                            pa_metadata_table = pa_metadata_table.drop(["file_name"])
+                            metadata_dir = os.path.dirname(metadata_file)
+                            metadata_dict = dict(
+                                zip(
+                                    pa_file_name_array.to_pylist(),
+                                    pa_table_to_pylist(pa_metadata_table),
                                 )
-                            sample_metadata = metadata_dict[file_relpath]
-                        else:
+                            )
+
+                        if (
+                            metadata_dir is None
+                            or downloaded_metadata_file is None
+                        ):
                             raise ValueError(
                                 f"One or several metadata.{metadata_ext} were found, but not in the same directory or in a parent directory of {downloaded_file_or_dir}."
                             )
+                        file_relpath = os.path.relpath(original_file, metadata_dir)
+                        file_relpath = file_relpath.replace("\\", "/")
+                        if file_relpath not in metadata_dict:
+                            raise ValueError(
+                                f"{self.BASE_COLUMN_NAME} at {file_relpath} doesn't have metadata in {downloaded_metadata_file}."
+                            )
+                        sample_metadata = metadata_dict[file_relpath]
                     else:
                         sample_metadata = {}
                     if add_labels:
@@ -358,54 +373,63 @@ class FolderBasedBuilder(datasets.GeneratorBasedBuilder):
                             current_dir = os.path.dirname(downloaded_dir_file)
                             if last_checked_dir is None or last_checked_dir != current_dir:
                                 last_checked_dir = current_dir
-                                metadata_file_candidates = [
-                                    (
-                                        os.path.relpath(
-                                            downloaded_dir_file, os.path.dirname(downloaded_metadata_file)
-                                        ),
-                                        metadata_file_candidate,
-                                        downloaded_metadata_file,
-                                    )
-                                    for metadata_file_candidate, downloaded_metadata_file in split_metadata_files
-                                    if metadata_file_candidate
-                                    is None  # ignore metadata_files that are not inside archives
-                                    and not os.path.relpath(
-                                        downloaded_dir_file, os.path.dirname(downloaded_metadata_file)
-                                    ).startswith("..")
-                                ]
-                                if metadata_file_candidates:
-                                    _, metadata_file, downloaded_metadata_file = min(
-                                        metadata_file_candidates, key=lambda x: count_path_segments(x[0])
-                                    )
-                                    pa_metadata_table = self._read_metadata(downloaded_metadata_file)
-                                    pa_file_name_array = pa_metadata_table["file_name"]
-                                    pa_file_name_array = pc.replace_substring(
-                                        pa_file_name_array, pattern="\\", replacement="/"
-                                    )
-                                    pa_metadata_table = pa_metadata_table.drop(["file_name"])
-                                    metadata_dir = os.path.dirname(downloaded_metadata_file)
-                                    metadata_dict = {
-                                        file_name: sample_metadata
-                                        for file_name, sample_metadata in zip(
-                                            pa_file_name_array.to_pylist(), pa_table_to_pylist(pa_metadata_table)
+                                if not (
+                                    metadata_file_candidates := [
+                                        (
+                                            os.path.relpath(
+                                                downloaded_dir_file,
+                                                os.path.dirname(
+                                                    downloaded_metadata_file
+                                                ),
+                                            ),
+                                            metadata_file_candidate,
+                                            downloaded_metadata_file,
                                         )
-                                    }
-                                else:
+                                        for metadata_file_candidate, downloaded_metadata_file in split_metadata_files
+                                        if metadata_file_candidate
+                                        is None  # ignore metadata_files that are not inside archives
+                                        and not os.path.relpath(
+                                            downloaded_dir_file,
+                                            os.path.dirname(
+                                                downloaded_metadata_file
+                                            ),
+                                        ).startswith("..")
+                                    ]
+                                ):
                                     raise ValueError(
                                         f"One or several metadata.{metadata_ext} were found, but not in the same directory or in a parent directory of {downloaded_dir_file}."
                                     )
-                            if metadata_dir is not None and downloaded_metadata_file is not None:
-                                downloaded_dir_file_relpath = os.path.relpath(downloaded_dir_file, metadata_dir)
-                                downloaded_dir_file_relpath = downloaded_dir_file_relpath.replace("\\", "/")
-                                if downloaded_dir_file_relpath not in metadata_dict:
-                                    raise ValueError(
-                                        f"{self.BASE_COLUMN_NAME} at {downloaded_dir_file_relpath} doesn't have metadata in {downloaded_metadata_file}."
+                                _, metadata_file, downloaded_metadata_file = min(
+                                    metadata_file_candidates, key=lambda x: count_path_segments(x[0])
+                                )
+                                pa_metadata_table = self._read_metadata(downloaded_metadata_file)
+                                pa_file_name_array = pa_metadata_table["file_name"]
+                                pa_file_name_array = pc.replace_substring(
+                                    pa_file_name_array, pattern="\\", replacement="/"
+                                )
+                                pa_metadata_table = pa_metadata_table.drop(["file_name"])
+                                metadata_dir = os.path.dirname(downloaded_metadata_file)
+                                metadata_dict = dict(
+                                    zip(
+                                        pa_file_name_array.to_pylist(),
+                                        pa_table_to_pylist(pa_metadata_table),
                                     )
-                                sample_metadata = metadata_dict[downloaded_dir_file_relpath]
-                            else:
+                                )
+
+                            if (
+                                metadata_dir is None
+                                or downloaded_metadata_file is None
+                            ):
                                 raise ValueError(
                                     f"One or several metadata.{metadata_ext} were found, but not in the same directory or in a parent directory of {downloaded_dir_file}."
                                 )
+                            downloaded_dir_file_relpath = os.path.relpath(downloaded_dir_file, metadata_dir)
+                            downloaded_dir_file_relpath = downloaded_dir_file_relpath.replace("\\", "/")
+                            if downloaded_dir_file_relpath not in metadata_dict:
+                                raise ValueError(
+                                    f"{self.BASE_COLUMN_NAME} at {downloaded_dir_file_relpath} doesn't have metadata in {downloaded_metadata_file}."
+                                )
+                            sample_metadata = metadata_dict[downloaded_dir_file_relpath]
                         else:
                             sample_metadata = {}
                         if add_labels:

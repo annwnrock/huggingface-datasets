@@ -258,9 +258,7 @@ class Extractor:
         for extractor in cls.extractors.values():
             if hasattr(extractor, "magic_number"):
                 magic_number_length = len(extractor.magic_number)
-                magic_number_max_length = (
-                    magic_number_length if magic_number_length > magic_number_max_length else magic_number_max_length
-                )
+                magic_number_max_length = max(magic_number_length, magic_number_max_length)
         return magic_number_max_length
 
     @staticmethod
@@ -277,10 +275,9 @@ class Extractor:
             "Use 'infer_extractor_format' instead.",
             category=FutureWarning,
         )
-        extractor_format = cls.infer_extractor_format(path)
-        if extractor_format:
-            return True if not return_extractor else (True, cls.extractors[extractor_format])
-        return False if not return_extractor else (False, None)
+        if extractor_format := cls.infer_extractor_format(path):
+            return (True, cls.extractors[extractor_format]) if return_extractor else True
+        return (False, None) if return_extractor else False
 
     @classmethod
     def infer_extractor_format(cls, path: Union["pathlib.Path", str]) -> str:  # <Added version="2.4.0"/>
@@ -299,7 +296,7 @@ class Extractor:
         extractor: Optional[BaseExtractor] = "deprecated",
     ) -> None:
         # Prevent parallel extractions
-        lock_path = str(input_path) + ".lock"
+        lock_path = f"{str(input_path)}.lock"
         with FileLock(lock_path):
             shutil.rmtree(output_path, ignore_errors=True)
             os.makedirs(os.path.dirname(output_path), exist_ok=True)

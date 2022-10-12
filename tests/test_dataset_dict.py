@@ -23,14 +23,18 @@ from .utils import (
 
 class DatasetDictTest(TestCase):
     def _create_dummy_dataset(self, multiple_columns=False):
-        if multiple_columns:
-            data = {"col_1": [3, 2, 1, 0], "col_2": ["a", "b", "c", "d"]}
-            dset = Dataset.from_dict(data)
-        else:
-            dset = Dataset.from_dict(
-                {"filename": ["my_name-train" + "_" + f"{x:03d}" for x in np.arange(30).tolist()]}
+        if not multiple_columns:
+            return Dataset.from_dict(
+                {
+                    "filename": [
+                        "my_name-train" + "_" + f"{x:03d}"
+                        for x in np.arange(30).tolist()
+                    ]
+                }
             )
-        return dset
+
+        data = {"col_1": [3, 2, 1, 0], "col_2": ["a", "b", "c", "d"]}
+        return Dataset.from_dict(data)
 
     def _create_dummy_dataset_dict(self, multiple_columns=False) -> DatasetDict:
         return DatasetDict(
@@ -500,7 +504,7 @@ def test_datasetdict_from_csv_split(split, csv_path, tmp_path):
     expected_features = {"col_1": "int64", "col_2": "int64", "col_3": "float64"}
     dataset = DatasetDict.from_csv(path, cache_dir=cache_dir)
     _check_csv_datasetdict(dataset, expected_features, splits=list(path.keys()))
-    assert all(dataset[split].split == split for split in path.keys())
+    assert all(dataset[split].split == split for split in path)
 
 
 def _check_json_datasetdict(dataset_dict, expected_features, splits=("train",)):
@@ -555,7 +559,7 @@ def test_datasetdict_from_json_splits(split, jsonl_path, tmp_path):
     expected_features = {"col_1": "string", "col_2": "int64", "col_3": "float64"}
     dataset = DatasetDict.from_json(path, cache_dir=cache_dir)
     _check_json_datasetdict(dataset, expected_features, splits=list(path.keys()))
-    assert all(dataset[split].split == split for split in path.keys())
+    assert all(dataset[split].split == split for split in path)
 
 
 def _check_parquet_datasetdict(dataset_dict, expected_features, splits=("train",)):
@@ -610,7 +614,7 @@ def test_datasetdict_from_parquet_split(split, parquet_path, tmp_path):
     expected_features = {"col_1": "string", "col_2": "int64", "col_3": "float64"}
     dataset = DatasetDict.from_parquet(path, cache_dir=cache_dir)
     _check_parquet_datasetdict(dataset, expected_features, splits=list(path.keys()))
-    assert all(dataset[split].split == split for split in path.keys())
+    assert all(dataset[split].split == split for split in path)
 
 
 def _check_text_datasetdict(dataset_dict, expected_features, splits=("train",)):
@@ -664,7 +668,7 @@ def test_datasetdict_from_text_split(split, text_path, tmp_path):
     expected_features = {"text": "string"}
     dataset = DatasetDict.from_text(path, cache_dir=cache_dir)
     _check_text_datasetdict(dataset, expected_features, splits=list(path.keys()))
-    assert all(dataset[split].split == split for split in path.keys())
+    assert all(dataset[split].split == split for split in path)
 
 
 @pytest.mark.skipif(

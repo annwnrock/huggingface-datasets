@@ -49,11 +49,11 @@ class SqlDatasetReader(AbstractDatasetInputStream):
             use_auth_token=use_auth_token,
         )
 
-        # Build dataset for splits
-        dataset = self.builder.as_dataset(
-            split="train", ignore_verifications=ignore_verifications, in_memory=self.keep_in_memory
+        return self.builder.as_dataset(
+            split="train",
+            ignore_verifications=ignore_verifications,
+            in_memory=self.keep_in_memory,
         )
-        return dataset
 
 
 class SqlDatasetWriter:
@@ -73,7 +73,7 @@ class SqlDatasetWriter:
         self.dataset = dataset
         self.name = name
         self.con = con
-        self.batch_size = batch_size if batch_size else config.DEFAULT_MAX_BATCH_SIZE
+        self.batch_size = batch_size or config.DEFAULT_MAX_BATCH_SIZE
         self.num_proc = num_proc
         self.to_sql_kwargs = to_sql_kwargs
 
@@ -81,8 +81,7 @@ class SqlDatasetWriter:
         _ = self.to_sql_kwargs.pop("sql", None)
         _ = self.to_sql_kwargs.pop("con", None)
 
-        written = self._write(**self.to_sql_kwargs)
-        return written
+        return self._write(**self.to_sql_kwargs)
 
     def _batch_sql(self, args):
         offset, to_sql_kwargs = args
