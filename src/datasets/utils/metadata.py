@@ -10,8 +10,7 @@ class _NoDuplicateSafeLoader(yaml.SafeLoader):
         keys = [self.constructed_objects[key_node] for key_node, _ in node.value]
         keys = [tuple(key) if isinstance(key, list) else key for key in keys]
         counter = Counter(keys)
-        duplicate_keys = [key for key in counter if counter[key] > 1]
-        if duplicate_keys:
+        if duplicate_keys := [key for key in counter if counter[key] > 1]:
             raise TypeError(f"Got duplicate yaml keys: {duplicate_keys}")
 
     def construct_mapping(self, node, deep=False):
@@ -21,7 +20,7 @@ class _NoDuplicateSafeLoader(yaml.SafeLoader):
 
 
 def _split_yaml_from_readme(readme_content: str) -> Tuple[Optional[str], str]:
-    full_content = [line for line in readme_content.splitlines()]
+    full_content = list(readme_content.splitlines())
     if full_content and full_content[0] == "---" and "---" in full_content[1:]:
         sep_idx = full_content[1:].index("---") + 1
         yamlblock = "\n".join(full_content[1:sep_idx])
@@ -50,10 +49,7 @@ class DatasetMetadata(dict):
         """
         with open(path, encoding="utf-8") as readme_file:
             yaml_string, _ = _split_yaml_from_readme(readme_file.read())
-        if yaml_string is not None:
-            return cls.from_yaml_string(yaml_string)
-        else:
-            return cls()
+        return cls.from_yaml_string(yaml_string) if yaml_string is not None else cls()
 
     def to_readme(self, path: Path):
         if path.exists():
@@ -66,12 +62,10 @@ class DatasetMetadata(dict):
             readme_file.write(updated_readme_content)
 
     def _to_readme(self, readme_content: Optional[str] = None) -> str:
-        if readme_content is not None:
-            _, content = _split_yaml_from_readme(readme_content)
-            full_content = "---\n" + self.to_yaml_string() + "---\n" + content
-        else:
-            full_content = "---\n" + self.to_yaml_string() + "---\n"
-        return full_content
+        if readme_content is None:
+            return "---\n" + self.to_yaml_string() + "---\n"
+        _, content = _split_yaml_from_readme(readme_content)
+        return "---\n" + self.to_yaml_string() + "---\n" + content
 
     @classmethod
     def from_yaml_string(cls, string: str) -> "DatasetMetadata":
@@ -86,7 +80,7 @@ class DatasetMetadata(dict):
         Raises:
             :obj:`TypeError`: If the dataset's metadata is invalid
         """
-        metadata_dict = yaml.load(string, Loader=_NoDuplicateSafeLoader) or dict()
+        metadata_dict = yaml.load(string, Loader=_NoDuplicateSafeLoader) or {}
 
         # Convert the YAML keys to DatasetMetadata fields
         metadata_dict = {

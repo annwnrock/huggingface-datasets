@@ -103,9 +103,7 @@ class DummyTestFS(AbstractFileSystem):
             files.sort(key=lambda file: file["name"])
             self.dircache[path.rstrip("/")] = files
 
-        if detail:
-            return files
-        return [file["name"] for file in files]
+        return files if detail else [file["name"] for file in files]
 
     def _open(
         self,
@@ -300,10 +298,14 @@ def test_xlistdir(input_path, expected_paths, tmp_path, mock_fsspec):
 @pytest.mark.integration
 def test_xlistdir_private(hf_private_dataset_repo_zipped_txt_data, hf_token):
     root_url = hf_hub_url(hf_private_dataset_repo_zipped_txt_data, "data.zip")
-    assert len(xlistdir("zip://::" + root_url, use_auth_token=hf_token)) == 1
-    assert len(xlistdir("zip://main_dir::" + root_url, use_auth_token=hf_token)) == 2
+    assert len(xlistdir(f"zip://::{root_url}", use_auth_token=hf_token)) == 1
+    assert (
+        len(xlistdir(f"zip://main_dir::{root_url}", use_auth_token=hf_token))
+        == 2
+    )
+
     with pytest.raises(FileNotFoundError):
-        xlistdir("zip://qwertyuiop::" + root_url, use_auth_token=hf_token)
+        xlistdir(f"zip://qwertyuiop::{root_url}", use_auth_token=hf_token)
     with pytest.raises(NotImplementedError):
         xlistdir(root_url, use_auth_token=hf_token)
 
@@ -328,9 +330,13 @@ def test_xisdir(input_path, isdir, tmp_path, mock_fsspec):
 @pytest.mark.integration
 def test_xisdir_private(hf_private_dataset_repo_zipped_txt_data, hf_token):
     root_url = hf_hub_url(hf_private_dataset_repo_zipped_txt_data, "data.zip")
-    assert xisdir("zip://::" + root_url, use_auth_token=hf_token) is True
-    assert xisdir("zip://main_dir::" + root_url, use_auth_token=hf_token) is True
-    assert xisdir("zip://qwertyuiop::" + root_url, use_auth_token=hf_token) is False
+    assert xisdir(f"zip://::{root_url}", use_auth_token=hf_token) is True
+    assert xisdir(f"zip://main_dir::{root_url}", use_auth_token=hf_token) is True
+    assert (
+        xisdir(f"zip://qwertyuiop::{root_url}", use_auth_token=hf_token)
+        is False
+    )
+
     with pytest.raises(NotImplementedError):
         xisdir(root_url, use_auth_token=hf_token)
 
@@ -354,8 +360,12 @@ def test_xisfile(input_path, isfile, tmp_path, mock_fsspec):
 @pytest.mark.integration
 def test_xisfile_private(hf_private_dataset_repo_txt_data, hf_token):
     root_url = hf_hub_url(hf_private_dataset_repo_txt_data, "")
-    assert xisfile(root_url + "data/text_data.txt", use_auth_token=hf_token) is True
-    assert xisfile(root_url + "qwertyuiop", use_auth_token=hf_token) is False
+    assert (
+        xisfile(f"{root_url}data/text_data.txt", use_auth_token=hf_token)
+        is True
+    )
+
+    assert xisfile(f"{root_url}qwertyuiop", use_auth_token=hf_token) is False
 
 
 @pytest.mark.parametrize(
@@ -377,9 +387,9 @@ def test_xgetsize(input_path, size, tmp_path, mock_fsspec):
 @pytest.mark.integration
 def test_xgetsize_private(hf_private_dataset_repo_txt_data, hf_token):
     root_url = hf_hub_url(hf_private_dataset_repo_txt_data, "")
-    assert xgetsize(root_url + "data/text_data.txt", use_auth_token=hf_token) == 39
+    assert xgetsize(f"{root_url}data/text_data.txt", use_auth_token=hf_token) == 39
     with pytest.raises(FileNotFoundError):
-        xgetsize(root_url + "qwertyuiop", use_auth_token=hf_token)
+        xgetsize(f"{root_url}qwertyuiop", use_auth_token=hf_token)
 
 
 @pytest.mark.parametrize(
@@ -420,8 +430,11 @@ def test_xglob(input_path, expected_paths, tmp_path, mock_fsspec):
 @pytest.mark.integration
 def test_xglob_private(hf_private_dataset_repo_zipped_txt_data, hf_token):
     root_url = hf_hub_url(hf_private_dataset_repo_zipped_txt_data, "data.zip")
-    assert len(xglob("zip://**::" + root_url, use_auth_token=hf_token)) == 3
-    assert len(xglob("zip://qwertyuiop/*::" + root_url, use_auth_token=hf_token)) == 0
+    assert len(xglob(f"zip://**::{root_url}", use_auth_token=hf_token)) == 3
+    assert (
+        len(xglob(f"zip://qwertyuiop/*::{root_url}", use_auth_token=hf_token))
+        == 0
+    )
 
 
 @pytest.mark.parametrize(
@@ -458,9 +471,17 @@ def test_xwalk(input_path, expected_outputs, tmp_path, mock_fsspec):
 @pytest.mark.integration
 def test_xwalk_private(hf_private_dataset_repo_zipped_txt_data, hf_token):
     root_url = hf_hub_url(hf_private_dataset_repo_zipped_txt_data, "data.zip")
-    assert len(list(xwalk("zip://::" + root_url, use_auth_token=hf_token))) == 2
-    assert len(list(xwalk("zip://main_dir::" + root_url, use_auth_token=hf_token))) == 1
-    assert len(list(xwalk("zip://qwertyuiop::" + root_url, use_auth_token=hf_token))) == 0
+    assert len(list(xwalk(f"zip://::{root_url}", use_auth_token=hf_token))) == 2
+    assert (
+        len(
+            list(xwalk(f"zip://main_dir::{root_url}", use_auth_token=hf_token))
+        )
+        == 1
+    )
+
+    assert not list(
+        xwalk(f"zip://qwertyuiop::{root_url}", use_auth_token=hf_token)
+    )
 
 
 @pytest.mark.parametrize(

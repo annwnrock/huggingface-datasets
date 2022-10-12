@@ -139,12 +139,13 @@ class TestCommand(BaseDatasetsCLICommand):
             print(f"Testing builder '{builder.config.name}' ({j + 1}/{n_builders})")
             builder._record_infos = True
             builder.download_and_prepare(
-                download_mode=DownloadMode.REUSE_CACHE_IF_EXISTS
-                if not self._force_redownload
-                else DownloadMode.FORCE_REDOWNLOAD,
+                download_mode=DownloadMode.FORCE_REDOWNLOAD
+                if self._force_redownload
+                else DownloadMode.REUSE_CACHE_IF_EXISTS,
                 ignore_verifications=self._ignore_verifications,
                 try_from_hf_gcs=False,
             )
+
             builder.as_dataset()
             if self._save_infos:
                 builder._save_infos()
@@ -156,7 +157,7 @@ class TestCommand(BaseDatasetsCLICommand):
             # upload them on S3 at the same time afterwards.
             if self._save_infos:
                 dataset_readme_path = os.path.join(builder_cls.get_imported_module_dir(), "README.md")
-                name = Path(path).name + ".py"
+                name = f"{Path(path).name}.py"
                 combined_path = os.path.join(path, name)
                 if os.path.isfile(path):
                     dataset_dir = os.path.dirname(path)

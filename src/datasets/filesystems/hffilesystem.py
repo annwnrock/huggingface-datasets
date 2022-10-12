@@ -45,12 +45,10 @@ class HfFileSystem(AbstractFileSystem):
                     "size": None,
                     "type": "file",
                 }
-                self.dir_cache.update(
-                    {
-                        str(d): {"name": str(d), "size": None, "type": "directory"}
-                        for d in list(PurePosixPath(hf_file.rfilename).parents)[:-1]
-                    }
-                )
+                self.dir_cache |= {
+                    str(d): {"name": str(d), "size": None, "type": "directory"}
+                    for d in list(PurePosixPath(hf_file.rfilename).parents)[:-1]
+                }
 
     def _open(
         self,
@@ -85,7 +83,4 @@ class HfFileSystem(AbstractFileSystem):
             if root == path:
                 paths[str(p)] = f
         out = list(paths.values())
-        if detail:
-            return out
-        else:
-            return list(sorted(f["name"] for f in out))
+        return out if detail else list(sorted(f["name"] for f in out))

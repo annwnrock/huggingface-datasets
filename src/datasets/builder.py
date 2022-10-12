@@ -161,8 +161,10 @@ class BuilderConfig:
             }
             if all(isinstance(v, (str, bool, int, float)) for v in config_kwargs_to_add_to_suffix.values()):
                 suffix = ",".join(
-                    str(k) + "=" + urllib.parse.quote_plus(str(v)) for k, v in config_kwargs_to_add_to_suffix.items()
+                    f"{str(k)}={urllib.parse.quote_plus(str(v))}"
+                    for k, v in config_kwargs_to_add_to_suffix.items()
                 )
+
                 if len(suffix) > 32:  # hash if too long
                     suffix = Hasher.hash(config_kwargs_to_add_to_suffix)
             else:
@@ -175,13 +177,12 @@ class BuilderConfig:
             m.update(custom_features)
             suffix = m.hexdigest()
 
-        if suffix:
-            config_id = self.name + "-" + suffix
-            if len(config_id) > config.MAX_DATASET_CONFIG_ID_READABLE_LENGTH:
-                config_id = self.name + "-" + Hasher.hash(suffix)
-            return config_id
-        else:
+        if not suffix:
             return self.name
+        config_id = f"{self.name}-{suffix}"
+        if len(config_id) > config.MAX_DATASET_CONFIG_ID_READABLE_LENGTH:
+            config_id = f"{self.name}-{Hasher.hash(suffix)}"
+        return config_id
 
 
 class DatasetBuilder:
@@ -546,10 +547,8 @@ class DatasetBuilder:
 
             version_dirnames = []
             for dir_name in os.listdir(builder_data_dir):
-                try:
+                with contextlib.suppress(ValueError):
                     version_dirnames.append((utils.Version(dir_name), dir_name))
-                except ValueError:  # Invalid version (ex: incomplete data dir)
-                    pass
             version_dirnames.sort(reverse=True)
             return version_dirnames
 
@@ -698,21 +697,23 @@ class DatasetBuilder:
             if download_config is None:
                 download_config = DownloadConfig(
                     cache_dir=self._cache_downloaded_dir,
-                    force_download=bool(download_mode == DownloadMode.FORCE_REDOWNLOAD),
-                    force_extract=bool(download_mode == DownloadMode.FORCE_REDOWNLOAD),
+                    force_download=download_mode == DownloadMode.FORCE_REDOWNLOAD,
+                    force_extract=download_mode == DownloadMode.FORCE_REDOWNLOAD,
                     use_etag=False,
                     use_auth_token=use_auth_token,
-                )  # We don't use etag for data files to speed up the process
+                )
+
 
             dl_manager = DownloadManager(
                 dataset_name=self.name,
                 download_config=download_config,
                 data_dir=self.config.data_dir,
                 base_path=base_path,
-                record_checksums=(self._record_infos or verify_infos)
-                if not self.SKIP_CHECKSUM_COMPUTATION_BY_DEFAULT
-                else False,
+                record_checksums=False
+                if self.SKIP_CHECKSUM_COMPUTATION_BY_DEFAULT
+                else (self._record_infos or verify_infos),
             )
+
 
         if (
             isinstance(dl_manager, MockDownloadManager)
@@ -727,7 +728,7 @@ class DatasetBuilder:
         if is_local:
             # Create parent directory of the output_dir to put the lock file in there
             Path(self._output_dir).parent.mkdir(parents=True, exist_ok=True)
-            lock_path = self._output_dir + "_builder.lock"
+            lock_path = f"{self._output_dir}_builder.lock"
 
         # File locking only with local paths; no file locking on GCS or S3
         with FileLock(lock_path) if is_local else contextlib.nullcontext():
@@ -744,13 +745,13 @@ class DatasetBuilder:
                 return
 
             logger.info(f"Generating dataset {self.name} ({self._output_dir})")
-            if is_local:  # if cache dir is local, check for available space
-                if not has_sufficient_disk_space(
-                    self.info.size_in_bytes or 0, directory=Path(self._output_dir).parent
-                ):
-                    raise OSError(
-                        f"Not enough disk space. Needed: {size_str(self.info.size_in_bytes or 0)} (download: {size_str(self.info.download_size or 0)}, generated: {size_str(self.info.dataset_size or 0)}, post-processed: {size_str(self.info.post_processing_size or 0)})"
-                    )
+            if is_local and not has_sufficient_disk_space(
+                self.info.size_in_bytes or 0,
+                directory=Path(self._output_dir).parent,
+            ):
+                raise OSError(
+                    f"Not enough disk space. Needed: {size_str(self.info.size_in_bytes or 0)} (download: {size_str(self.info.download_size or 0)}, generated: {size_str(self.info.dataset_size or 0)}, post-processed: {size_str(self.info.post_processing_size or 0)})"
+                )
 
             @contextlib.contextmanager
             def incomplete_dir(dirname):
@@ -759,7 +760,7 @@ class DatasetBuilder:
                     self._fs.makedirs(dirname, exist_ok=True)
                     yield dirname
                 else:
-                    tmp_dir = dirname + ".incomplete"
+                    tmp_dir = f"{dirname}.incomplete"
                     os.makedirs(tmp_dir, exist_ok=True)
                     try:
                         yield tmp_dir
@@ -853,13 +854,16 @@ class DatasetBuilder:
         downloaded_info = DatasetInfo.from_directory(self._output_dir)
         self.info.update(downloaded_info)
         # download post processing resources
-        remote_cache_dir = HF_GCP_BASE_URL + "/" + relative_data_dir.replace(os.sep, "/")
+        remote_cache_dir = f"{HF_GCP_BASE_URL}/" + relative_data_dir.replace(
+            os.sep, "/"
+        )
+
         for split in self.info.splits:
             for resource_file_name in self._post_processing_resources(split).values():
                 if os.sep in resource_file_name:
                     raise ValueError(f"Resources shouldn't be in a sub-directory: {resource_file_name}")
                 try:
-                    resource_path = cached_path(remote_cache_dir + "/" + resource_file_name)
+                    resource_path = cached_path(f"{remote_cache_dir}/{resource_file_name}")
                     shutil.move(resource_path, os.path.join(self._output_dir, resource_file_name))
                 except ConnectionError:
                     logger.info(f"Couldn't download resourse file {resource_file_name} from Hf google storage.")
@@ -929,16 +933,15 @@ class DatasetBuilder:
     def download_post_processing_resources(self, dl_manager):
         for split in self.info.splits or []:
             for resource_name, resource_file_name in self._post_processing_resources(split).items():
-                if not not is_remote_filesystem(self._fs):
+                if is_remote_filesystem(self._fs):
                     raise NotImplementedError(f"Post processing is not supported on filesystem {self._fs}")
                 if os.sep in resource_file_name:
                     raise ValueError(f"Resources shouldn't be in a sub-directory: {resource_file_name}")
                 resource_path = os.path.join(self._output_dir, resource_file_name)
                 if not os.path.exists(resource_path):
-                    downloaded_resource_path = self._download_post_processing_resources(
+                    if downloaded_resource_path := self._download_post_processing_resources(
                         split, resource_name, dl_manager
-                    )
-                    if downloaded_resource_path:
+                    ):
                         logger.info(f"Downloaded post-processing resource {resource_name} as {resource_file_name}")
                         shutil.move(downloaded_resource_path, resource_path)
 
@@ -948,14 +951,14 @@ class DatasetBuilder:
     def _save_info(self):
         is_local = not is_remote_filesystem(self._fs)
         if is_local:
-            lock_path = self._output_dir + "_info.lock"
+            lock_path = f"{self._output_dir}_info.lock"
         with FileLock(lock_path) if is_local else contextlib.nullcontext():
             self.info.write_to_directory(self._output_dir, fs=self._fs)
 
     def _save_infos(self):
         is_local = not is_remote_filesystem(self._fs)
         if is_local:
-            lock_path = self._output_dir + "_infos.lock"
+            lock_path = f"{self._output_dir}_infos.lock"
         with FileLock(lock_path) if is_local else contextlib.nullcontext():
             DatasetInfosDict(**{self.config.name: self.info}).write_to_directory(self.get_imported_module_dir())
 
@@ -1125,8 +1128,7 @@ class DatasetBuilder:
         hasher = Hasher()
         hasher.update(self._relative_data_dir().replace(os.sep, "/"))
         hasher.update(str(split))  # for example: train, train+test, train[:10%], test[:33%](pct1_dropremainder)
-        fingerprint = hasher.hexdigest()
-        return fingerprint
+        return hasher.hexdigest()
 
     def as_streaming_dataset(
         self,
@@ -1664,7 +1666,7 @@ class BeamBasedBuilder(DatasetBuilder):
         import apache_beam as beam
 
         fs = beam.io.filesystems.FileSystems
-        path_join = os.path.join if not is_remote_filesystem(self._fs) else posixpath.join
+        path_join = posixpath.join if is_remote_filesystem(self._fs) else os.path.join
         with fs.create(path_join(self._output_dir, config.DATASET_INFO_FILENAME)) as f:
             self.info._dump_info(f)
         if self.info.license:
@@ -1685,7 +1687,7 @@ class BeamBasedBuilder(DatasetBuilder):
         # To write examples in filesystem:
         split_name = split_generator.split_info.name
         fname = f"{self.name}-{split_name}.{file_format}"
-        path_join = os.path.join if not is_remote_filesystem(self._fs) else posixpath.join
+        path_join = posixpath.join if is_remote_filesystem(self._fs) else os.path.join
         fpath = path_join(self._output_dir, fname)
         beam_writer = BeamWriter(
             features=self.info.features, path=fpath, namespace=split_name, cache_dir=self._output_dir
@@ -1703,6 +1705,8 @@ class BeamBasedBuilder(DatasetBuilder):
             pcoll_examples = self._build_pcollection(pipeline, **split_generator.gen_kwargs)
             pcoll_examples |= "Encode" >> beam.Map(lambda key_ex: (key_ex[0], encode_example(key_ex[1])))
             return beam_writer.write_from_pcollection(pcoll_examples)
+
+        # Add the PCollection to the pipeline
 
         # Add the PCollection to the pipeline
         _ = pipeline | split_name >> _build_pcollection()  # pylint: disable=no-value-for-parameter

@@ -47,11 +47,9 @@ def data_files_with_labels_no_metadata(tmp_path, auto_text_file):
     filename2 = subdir_class_1 / "file1.txt"
     shutil.copyfile(auto_text_file, filename2)
 
-    data_files_with_labels_no_metadata = DataFilesDict.from_local_or_remote(
+    return DataFilesDict.from_local_or_remote(
         get_data_patterns_locally(str(data_dir)), str(data_dir)
     )
-
-    return data_files_with_labels_no_metadata
 
 
 @pytest.fixture
@@ -271,15 +269,15 @@ def test_prepare_generate_examples_duplicated_label_key(
         assert autofolder.info.features["label"] == ClassLabel(names=["class0", "class1"])
         assert all(example["label"] in ["class0", "class1"] for _, example in generator)
 
+    elif drop_metadata is True:
+        # drop both labels and metadata
+        assert autofolder.info.features == Features({"base": None})
+        assert all(example.keys() == {"base"} for _, example in generator)
+
     else:
-        if drop_metadata is not True:
-            # labels are from metadata
-            assert autofolder.info.features["label"] == Value("string")
-            assert all(example["label"] in ["CLASS_0", "CLASS_1"] for _, example in generator)
-        else:
-            # drop both labels and metadata
-            assert autofolder.info.features == Features({"base": None})
-            assert all(example.keys() == {"base"} for _, example in generator)
+        # labels are from metadata
+        assert autofolder.info.features["label"] == Value("string")
+        assert all(example["label"] in ["CLASS_0", "CLASS_1"] for _, example in generator)
 
 
 @pytest.mark.parametrize("drop_metadata", [None, True, False])
@@ -339,10 +337,12 @@ def test_prepare_generate_examples_with_metadata_that_misses_one_sample(
     files_with_metadata_that_misses_one_sample, drop_metadata
 ):
     file, file2, metadata_file = files_with_metadata_that_misses_one_sample
-    if not drop_metadata:
-        features = Features({"base": None, "additional_feature": Value("string")})
-    else:
-        features = Features({"base": None})
+    features = (
+        Features({"base": None})
+        if drop_metadata
+        else Features({"base": None, "additional_feature": Value("string")})
+    )
+
     autofolder = DummyFolderBasedBuilder(
         data_files=[file, file2, metadata_file],
         drop_metadata=drop_metadata,
@@ -376,8 +376,21 @@ def test_data_files_with_metadata_and_splits(
         expected_num_of_examples = len(files) - 1
         generated_examples = list(autofolder._generate_examples(**generated_split.gen_kwargs))
         assert len(generated_examples) == expected_num_of_examples
-        assert len(set(example["base"] for _, example in generated_examples)) == expected_num_of_examples
-        assert len(set(example["additional_feature"] for _, example in generated_examples)) == expected_num_of_examples
+        assert (
+            len({example["base"] for _, example in generated_examples})
+            == expected_num_of_examples
+        )
+
+        assert (
+            len(
+                {
+                    example["additional_feature"]
+                    for _, example in generated_examples
+                }
+            )
+            == expected_num_of_examples
+        )
+
         assert all(example["additional_feature"] is not None for _, example in generated_examples)
 
 
@@ -392,8 +405,21 @@ def test_data_files_with_metadata_and_archives(streaming, cache_dir, data_files_
         expected_num_of_examples = 2 * num_of_archives
         generated_examples = list(autofolder._generate_examples(**generated_split.gen_kwargs))
         assert len(generated_examples) == expected_num_of_examples
-        assert len(set(example["base"] for _, example in generated_examples)) == expected_num_of_examples
-        assert len(set(example["additional_feature"] for _, example in generated_examples)) == expected_num_of_examples
+        assert (
+            len({example["base"] for _, example in generated_examples})
+            == expected_num_of_examples
+        )
+
+        assert (
+            len(
+                {
+                    example["additional_feature"]
+                    for _, example in generated_examples
+                }
+            )
+            == expected_num_of_examples
+        )
+
         assert all(example["additional_feature"] is not None for _, example in generated_examples)
 
 

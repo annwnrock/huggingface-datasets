@@ -156,7 +156,7 @@ def set_caching_enabled(boolean: bool):
     the ``download_mode`` parameter in :func:`datasets.load_dataset`.
     """
     global _CACHING_ENABLED
-    _CACHING_ENABLED = bool(boolean)
+    _CACHING_ENABLED = boolean
 
 
 def is_caching_enabled() -> bool:
@@ -259,7 +259,11 @@ def _hash_pa_table(hasher, value):
         else:
             return hasher.hash_bytes(value.to_string().encode("utf-8"))
 
-    value = "-".join(col + "-" + _hash_pa_array(value[col]) for col in sorted(value.column_names))
+    value = "-".join(
+        f"{col}-{_hash_pa_array(value[col])}"
+        for col in sorted(value.column_names)
+    )
+
     return hasher.hash_bytes(value.encode("utf-8"))
 
 
@@ -413,7 +417,9 @@ def fingerprint_transform(
 
     def _fingerprint(func):
 
-        if not inplace and not all(name in func.__code__.co_varnames for name in fingerprint_names):
+        if not inplace and any(
+            name not in func.__code__.co_varnames for name in fingerprint_names
+        ):
             raise ValueError("function {func} is missing parameters {fingerprint_names} in signature")
 
         if randomized_function:  # randomized function have seed and generator parameters
@@ -444,11 +450,14 @@ def fingerprint_transform(
                 kwargs_for_fingerprint = {k: v for k, v in kwargs_for_fingerprint.items() if k in use_kwargs}
             if ignore_kwargs:
                 kwargs_for_fingerprint = {k: v for k, v in kwargs_for_fingerprint.items() if k not in ignore_kwargs}
-            if randomized_function:  # randomized functions have `seed` and `generator` parameters
-                if kwargs_for_fingerprint.get("seed") is None and kwargs_for_fingerprint.get("generator") is None:
-                    _, seed, pos, *_ = np.random.get_state()
-                    seed = seed[pos] if pos < 624 else seed[0]
-                    kwargs_for_fingerprint["generator"] = np.random.default_rng(seed)
+            if (
+                randomized_function
+                and kwargs_for_fingerprint.get("seed") is None
+                and kwargs_for_fingerprint.get("generator") is None
+            ):
+                _, seed, pos, *_ = np.random.get_state()
+                seed = seed[pos] if pos < 624 else seed[0]
+                kwargs_for_fingerprint["generator"] = np.random.default_rng(seed)
 
             # remove kwargs that are the default values
 

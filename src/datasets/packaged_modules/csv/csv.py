@@ -119,7 +119,10 @@ class CsvConfig(datasets.BuilderConfig):
                 del pd_read_csv_kwargs[pd_read_csv_parameter]
 
         # Remove 1.3 new arguments
-        if not (datasets.config.PANDAS_VERSION.major >= 1 and datasets.config.PANDAS_VERSION.minor >= 3):
+        if (
+            datasets.config.PANDAS_VERSION.major < 1
+            or datasets.config.PANDAS_VERSION.minor < 3
+        ):
             for pd_read_csv_parameter in _PANDAS_READ_CSV_NEW_1_3_0_PARAMETERS:
                 del pd_read_csv_kwargs[pd_read_csv_parameter]
 
@@ -167,12 +170,17 @@ class Csv(datasets.ArrowBasedBuilder):
         # dtype allows reading an int column as str
         dtype = (
             {
-                name: dtype.to_pandas_dtype() if not require_storage_cast(feature) else object
-                for name, dtype, feature in zip(schema.names, schema.types, self.config.features.values())
+                name: object
+                if require_storage_cast(feature)
+                else dtype.to_pandas_dtype()
+                for name, dtype, feature in zip(
+                    schema.names, schema.types, self.config.features.values()
+                )
             }
             if schema is not None
             else None
         )
+
         for file_idx, file in enumerate(itertools.chain.from_iterable(files)):
             csv_file_reader = pd.read_csv(file, iterator=True, dtype=dtype, **self.config.pd_read_csv_kwargs)
             try:

@@ -38,18 +38,7 @@ def create_repo(
     Returns:
         `str`: URL to the newly created repo.
     """
-    if version.parse(huggingface_hub.__version__) < version.parse("0.5.0"):
-        organization, name = repo_id.split("/")
-        return hf_api.create_repo(
-            name=name,
-            organization=organization,
-            token=token,
-            private=private,
-            repo_type=repo_type,
-            exist_ok=exist_ok,
-            space_sdk=space_sdk,
-        )
-    else:  # the `organization` parameter is deprecated in huggingface_hub>=0.5.0
+    if version.parse(huggingface_hub.__version__) >= version.parse("0.5.0"):
         return hf_api.create_repo(
             repo_id=repo_id,
             token=token,
@@ -58,6 +47,16 @@ def create_repo(
             exist_ok=exist_ok,
             space_sdk=space_sdk,
         )
+    organization, name = repo_id.split("/")
+    return hf_api.create_repo(
+        name=name,
+        organization=organization,
+        token=token,
+        private=private,
+        repo_type=repo_type,
+        exist_ok=exist_ok,
+        space_sdk=space_sdk,
+    )
 
 
 def delete_repo(
@@ -82,20 +81,19 @@ def delete_repo(
     Returns:
         `str`: URL to the newly created repo.
     """
-    if version.parse(huggingface_hub.__version__) < version.parse("0.5.0"):
-        organization, name = repo_id.split("/")
-        return hf_api.delete_repo(
-            name=name,
-            organization=organization,
-            token=token,
-            repo_type=repo_type,
-        )
-    else:  # the `organization` parameter is deprecated in huggingface_hub>=0.5.0
+    if version.parse(huggingface_hub.__version__) >= version.parse("0.5.0"):
         return hf_api.delete_repo(
             repo_id=repo_id,
             token=token,
             repo_type=repo_type,
         )
+    organization, name = repo_id.split("/")
+    return hf_api.delete_repo(
+        name=name,
+        organization=organization,
+        token=token,
+        repo_type=repo_type,
+    )
 
 
 def dataset_info(
@@ -135,21 +133,20 @@ def dataset_info(
             If the revision to download from cannot be found.
     </Tip>
     """
-    if version.parse(huggingface_hub.__version__) < version.parse("0.10.0"):
-        if use_auth_token is False:
-            token = "no-token"
-        elif isinstance(use_auth_token, str):
-            token = use_auth_token
-        else:
-            token = HfFolder.get_token() or "no-token"
-        return hf_api.dataset_info(
-            repo_id,
-            revision=revision,
-            token=token,
-            timeout=timeout,
-        )
-    else:  # the `token` parameter is deprecated in huggingface_hub>=0.10.0
+    if version.parse(huggingface_hub.__version__) >= version.parse("0.10.0"):
         return hf_api.dataset_info(repo_id, revision=revision, timeout=timeout, use_auth_token=use_auth_token)
+    if use_auth_token is False:
+        token = "no-token"
+    elif isinstance(use_auth_token, str):
+        token = use_auth_token
+    else:
+        token = HfFolder.get_token() or "no-token"
+    return hf_api.dataset_info(
+        repo_id,
+        revision=revision,
+        token=token,
+        timeout=timeout,
+    )
 
 
 def list_repo_files(

@@ -27,5 +27,4 @@ class Generator(datasets.GeneratorBasedBuilder):
         return [datasets.SplitGenerator(name=datasets.Split.TRAIN, gen_kwargs={})]
 
     def _generate_examples(self):
-        for idx, ex in enumerate(self.config.generator(**self.config.gen_kwargs)):
-            yield idx, ex
+        yield from enumerate(self.config.generator(**self.config.gen_kwargs))

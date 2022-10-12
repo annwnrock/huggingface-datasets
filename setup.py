@@ -60,6 +60,7 @@ To create the package for pypi.
 """
 
 
+
 from setuptools import find_packages, setup
 
 
@@ -114,31 +115,28 @@ BENCHMARKS_REQUIRE = [
 ]
 
 TESTS_REQUIRE = [
-    # test dependencies
     "absl-py",
     "pytest",
     "pytest-datadir",
     "pytest-xdist",
-    # optional dependencies
     "apache-beam>=2.26.0",
-    "elasticsearch<8.0.0",  # 8.0 asks users to provide hosts or cloud_id when instantiating ElastictSearch()
-    "aiobotocore>=2.0.1",  # required by s3fs>=2021.11.1
-    "boto3>=1.19.8",  # to be compatible with aiobotocore>=2.0.1 - both have strong dependencies on botocore
-    "botocore>=1.22.8",  # to be compatible with aiobotocore and boto3
+    "elasticsearch<8.0.0",
+    "aiobotocore>=2.0.1",
+    "boto3>=1.19.8",
+    "botocore>=1.22.8",
     "faiss-cpu>=1.6.4",
     "fsspec[s3]",
     "lz4",
     "moto[s3,server]==2.0.4",
     "py7zr",
     "rarfile>=4.0",
-    "s3fs>=2021.11.1",  # aligned with fsspec[http]>=2021.11.1
+    "s3fs>=2021.11.1",
     "tensorflow>=2.3,!=2.6.0,!=2.6.1",
     "torch",
     "torchaudio<0.12.0",
     "soundfile",
     "transformers",
     "zstandard",
-    # metrics dependencies
     "bert_score>=0.3.6",
     "jiwer",
     "langdetect",
@@ -149,21 +147,20 @@ TESTS_REQUIRE = [
     "sacremoses",
     "scikit-learn",
     "scipy",
-    "sentencepiece",  # for bleurt
+    "sentencepiece",
     "seqeval",
     "sqlalchemy",
     "tldextract",
-    # to speed up pip backtracking
     "toml>=0.10.1",
     "requests_file>=1.5.1",
     "tldextract>=3.1.0",
     "texttable>=1.6.3",
     "Werkzeug>=1.0.1",
     "six~=1.15.0",
+    *VISION_REQURE,
+    *AUDIO_REQUIRE,
 ]
 
-TESTS_REQUIRE.extend(VISION_REQURE)
-TESTS_REQUIRE.extend(AUDIO_REQUIRE)
 
 QUALITY_REQUIRE = ["black~=22.0", "flake8>=3.8.3", "isort>=5.0.0", "pyyaml>=5.3.1"]
 
